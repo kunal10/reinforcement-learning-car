@@ -131,6 +131,16 @@ class GameState:
             pygame.display.flip()
         clock.tick()
 
+        # Get the current cat location and the readings there.
+        cat_state = None
+        if use_red_team and trained_red_team:
+            cat_x, cat_y = self.cat_body.position
+            cat_readings = self.get_sonar_readings(cat_x, cat_y, self.cat_body.angle)
+            cat_state = np.array([cat_readings])
+            if self.is_crashed(cat_readings):
+                self.cat_crashed = True
+                self.recover_cat_crash(cat_driving_direction)
+
         # Get the current car location and the readings there.
         car_x, car_y = self.car_body.position
         car_readings = self.get_sonar_readings(car_x, car_y, self.car_body.angle)
@@ -141,24 +151,10 @@ class GameState:
         if self.is_crashed(car_readings):
             self.car_crashed = True
             reward = -500
-            print('Crash statuses before car recovery: ', self.car_crashed, self.cat_crashed)
             self.recover_car_crash(car_driving_direction)
-            print('Crash statuses after car recovery: ', self.car_crashed, self.cat_crashed)
         else:
             # Higher readings are better, so return the sum.
             reward = -5 + int(sum(car_readings) / 10)
-
-        # Get the current cat location and the readings there.
-        cat_state = None
-        if use_red_team and trained_red_team:
-            cat_x, cat_y = self.cat_body.position
-            cat_readings = self.get_sonar_readings(cat_x, cat_y, self.cat_body.angle)
-            cat_state = np.array([cat_readings])
-            if self.is_crashed(cat_readings):
-                self.cat_crashed = True
-                print('Crash statuses before cat recovery: ', self.car_crashed, self.cat_crashed)
-                self.recover_cat_crash(cat_driving_direction)
-                print('Crash statuses after cat recovery: ',  self.car_crashed, self.cat_crashed)
 
         self.num_steps += 1
         return reward, car_state, cat_state
@@ -215,9 +211,16 @@ class GameState:
                 self.car_body.angle += .2  # Turn a little.
                 screen.fill(THECOLORS["yellow"])
                 draw(screen, self.space)
+                # Set velocity of other agents to 0 before retracting
+                cat_velocity = self.cat_body.velocity
+                self.cat_body.velocity = pymunk.Vec2d(0., 0.)
                 self.space.step(1./10)
                 if draw_screen:
                     pygame.display.flip()
+                # Fill the screen black to avoid false detection by other agents
+                screen.fill(THECOLORS["black"])
+                self.cat_body.velocity = cat_velocity
+                draw(screen, self.space)
                 clock.tick()
 
     def recover_cat_crash(self, cat_driving_direction):
@@ -232,9 +235,16 @@ class GameState:
                 self.cat_body.angle += .2  # Turn a little.
                 screen.fill(THECOLORS["orange"])  # Red is scary!
                 draw(screen, self.space)
+                # Set velocity of other agents to 0 before retracting
+                car_velocity = self.car_body.velocity
+                self.car_body.velocity = pymunk.Vec2d(0., 0.)
                 self.space.step(1./10)
                 if draw_screen:
                     pygame.display.flip()
+                # Fill the screen black to avoid false detection by other agents
+                screen.fill(THECOLORS["black"])  # Red is scary!
+                self.car_body.velocity = car_velocity
+                draw(screen, self.space)
                 clock.tick()
 
     def get_sonar_readings(self, x, y, angle):
