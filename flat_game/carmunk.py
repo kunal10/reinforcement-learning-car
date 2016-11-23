@@ -23,21 +23,31 @@ screen.set_alpha(None)
 show_sensors = True
 draw_screen = True
 
+use_obstacles = False
+
+# Whether red team agent should be added
+use_red_team = True
+# Whether red team agent is random or trained
+trained_red_team = True
 
 class GameState:
     def __init__(self):
-        # Global-ish.
-        self.crashed = False
-
         # Physics stuff.
         self.space = pymunk.Space()
         self.space.gravity = pymunk.Vec2d(0., 0.)
 
+        # Record steps.
+        self.num_steps = 0
+
+        # Global-ish.
+        self.car_crashed = False
         # Create the car.
         self.create_car(100, 100, 0.5)
 
-        # Record steps.
-        self.num_steps = 0
+        # Create a cat.
+        if use_red_team:
+            self.cat_crashed = False
+            self.create_cat()
 
         # Create walls.
         static = [
@@ -64,12 +74,10 @@ class GameState:
         # Create some obstacles, semi-randomly.
         # We'll create three and they'll move around to prevent over-fitting.
         self.obstacles = []
-        self.obstacles.append(self.create_obstacle(200, 350, 100))
-        self.obstacles.append(self.create_obstacle(700, 200, 125))
-        self.obstacles.append(self.create_obstacle(600, 600, 35))
-
-        # Create a cat.
-        self.create_cat()
+        if use_obstacles:
+            self.obstacles.append(self.create_obstacle(200, 350, 100))
+            self.obstacles.append(self.create_obstacle(700, 200, 125))
+            self.obstacles.append(self.create_obstacle(600, 600, 35))
 
     def create_obstacle(self, x, y, r):
         c_body = pymunk.Body(pymunk.inf, pymunk.inf)
@@ -84,11 +92,13 @@ class GameState:
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
         self.cat_body = pymunk.Body(1, inertia)
         self.cat_body.position = 50, height - 100
-        self.cat_shape = pymunk.Circle(self.cat_body, 30)
-        self.cat_shape.color = THECOLORS["orange"]
+        self.cat_shape = pymunk.Circle(self.cat_body, 25)
+        self.cat_shape.color = THECOLORS["red"]
         self.cat_shape.elasticity = 1.0
         self.cat_shape.angle = 0.5
-        direction = Vec2d(1, 0).rotated(self.cat_body.angle)
+        driving_direction = Vec2d(1, 0).rotated(self.cat_body.angle)
+        # TODO : Do we need to apply impulse here ?
+        self.cat_body.apply_impulse(driving_direction)
         self.space.add(self.cat_body, self.cat_shape)
 
     def create_car(self, x, y, r):
@@ -103,22 +113,15 @@ class GameState:
         self.car_body.apply_impulse(driving_direction)
         self.space.add(self.car_body, self.car_shape)
 
-    def frame_step(self, action):
-        if action == 0:  # Turn left.
-            self.car_body.angle -= .2
-        elif action == 1:  # Turn right.
-            self.car_body.angle += .2
-
+    def frame_step(self, car_action, cat_action=None):
         # Move obstacles.
-        if self.num_steps % 100 == 0:
-            self.move_obstacles()
+        self.move_obstacles()
 
         # Move cat.
-        if self.num_steps % 5 == 0:
-            self.move_cat()
+        cat_driving_direction = self.move_cat(cat_action)
 
-        driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)
-        self.car_body.velocity = 100 * driving_direction
+        # Move car
+        car_driving_direction = self.move_car(car_action)
 
         # Update the screen and stuff.
         screen.fill(THECOLORS["black"])
@@ -128,66 +131,111 @@ class GameState:
             pygame.display.flip()
         clock.tick()
 
-        # Get the current location and the readings there.
-        x, y = self.car_body.position
-        readings = self.get_sonar_readings(x, y, self.car_body.angle)
-        state = np.array([readings])
+        # Get the current car location and the readings there.
+        car_x, car_y = self.car_body.position
+        car_readings = self.get_sonar_readings(car_x, car_y, self.car_body.angle)
+        car_state = np.array([car_readings])
 
         # Set the reward.
         # Car crashed when any reading == 1
-        if self.car_is_crashed(readings):
-            self.crashed = True
+        if self.is_crashed(car_readings):
+            self.car_crashed = True
             reward = -500
-            self.recover_from_crash(driving_direction)
+            print('Crash statuses before car recovery: ', self.car_crashed, self.cat_crashed)
+            self.recover_car_crash(car_driving_direction)
+            print('Crash statuses after car recovery: ', self.car_crashed, self.cat_crashed)
         else:
             # Higher readings are better, so return the sum.
-            reward = -5 + int(self.sum_readings(readings) / 10)
-        self.num_steps += 1
+            reward = -5 + int(sum(car_readings) / 10)
 
-        return reward, state
+        # Get the current cat location and the readings there.
+        cat_state = None
+        if use_red_team and trained_red_team:
+            cat_x, cat_y = self.cat_body.position
+            cat_readings = self.get_sonar_readings(cat_x, cat_y, self.cat_body.angle)
+            cat_state = np.array([cat_readings])
+            if self.is_crashed(cat_readings):
+                self.cat_crashed = True
+                print('Crash statuses before cat recovery: ', self.car_crashed, self.cat_crashed)
+                self.recover_cat_crash(cat_driving_direction)
+                print('Crash statuses after cat recovery: ',  self.car_crashed, self.cat_crashed)
+
+        self.num_steps += 1
+        return reward, car_state, cat_state
 
     def move_obstacles(self):
-        # Randomly move obstacles around.
-        for obstacle in self.obstacles:
-            speed = random.randint(1, 5)
-            direction = Vec2d(1, 0).rotated(self.car_body.angle + random.randint(-2, 2))
-            obstacle.velocity = speed * direction
+        if self.num_steps % 100 == 0:
+            # Randomly move obstacles around.
+            for obstacle in self.obstacles:
+                speed = random.randint(1, 5)
+                direction = Vec2d(1, 0).rotated(self.car_body.angle + random.randint(-2, 2))
+                obstacle.velocity = speed * direction
 
-    def move_cat(self):
-        speed = random.randint(20, 200)
-        self.cat_body.angle -= random.randint(-1, 1)
-        direction = Vec2d(1, 0).rotated(self.cat_body.angle)
-        self.cat_body.velocity = speed * direction
+    def move_car(self, action):
+        return self.move_body(self.car_body, action)
 
-    def car_is_crashed(self, readings):
-        if readings[0] == 1 or readings[1] == 1 or readings[2] == 1:
-            return True
+    def move_cat(self, action=None):
+        if not use_red_team:
+            return
+        if trained_red_team:
+            assert action is not None
+            return self.move_body(self.cat_body, action)
         else:
-            return False
+            if self.num_steps % 5 == 0:
+                speed = random.randint(20, 200)
+                self.cat_body.angle -= random.randint(-1, 1)
+                direction = Vec2d(1, 0).rotated(self.cat_body.angle)
+                self.cat_body.velocity = speed * direction
+                return
 
-    def recover_from_crash(self, driving_direction):
+    @staticmethod
+    def move_body(body, action):
+        if action == 0:  # Turn left.
+            body.angle -= .2
+        elif action == 1:  # Turn right.
+            body.angle += .2
+        driving_direction = Vec2d(1, 0).rotated(body.angle)
+        body.velocity = 100 * driving_direction
+        return driving_direction
+
+    @staticmethod
+    # TODO : Fix this to consider collisions from back as well.
+    def is_crashed(readings):
+        return readings[0] == 1 or readings[1] == 1 or readings[2] == 1
+
+    def recover_car_crash(self, car_driving_direction):
         """
         We hit something, so recover.
         """
-        while self.crashed:
+        while self.car_crashed:
             # Go backwards.
-            self.car_body.velocity = -100 * driving_direction
-            self.crashed = False
+            self.car_body.velocity = -100 * car_driving_direction
+            self.car_crashed = False
             for i in range(10):
                 self.car_body.angle += .2  # Turn a little.
-                screen.fill(THECOLORS["red"])  # Red is scary!
+                screen.fill(THECOLORS["yellow"])
                 draw(screen, self.space)
                 self.space.step(1./10)
                 if draw_screen:
                     pygame.display.flip()
                 clock.tick()
 
-    def sum_readings(self, readings):
-        """Sum the number of non-zero readings."""
-        tot = 0
-        for i in readings:
-            tot += i
-        return tot
+    def recover_cat_crash(self, cat_driving_direction):
+        """
+        We hit something, so recover.
+        """
+        while self.cat_crashed:
+            # Go backwards.
+            self.cat_body.velocity = -100 * cat_driving_direction
+            self.cat_crashed = False
+            for i in range(10):
+                self.cat_body.angle += .2  # Turn a little.
+                screen.fill(THECOLORS["orange"])  # Red is scary!
+                draw(screen, self.space)
+                self.space.step(1./10)
+                if draw_screen:
+                    pygame.display.flip()
+                clock.tick()
 
     def get_sonar_readings(self, x, y, angle):
         readings = []
@@ -272,4 +320,4 @@ class GameState:
 if __name__ == "__main__":
     game_state = GameState()
     while True:
-        game_state.frame_step((random.randint(0, 2)))
+        game_state.frame_step((random.randint(0, 2)), (random.randint(0, 2)))
