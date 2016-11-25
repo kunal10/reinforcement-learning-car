@@ -1,6 +1,7 @@
 import random
 import math
 import numpy as np
+import os
 
 import pygame
 from pygame.color import THECOLORS
@@ -17,18 +18,18 @@ screen = pygame.display.set_mode((width, height))
 clock = pygame.time.Clock()
 
 # Turn off alpha since we don't use it.
-screen.set_alpha(None)
+# screen.set_alpha(None)
 
 # Showing sensors and redrawing slows things down.
-show_sensors = True
-draw_screen = True
+show_sensors = False
+draw_screen = False
 
 use_obstacles = False
 
 # Whether red team agent should be added
-use_red_team = True
+use_red_team = False
 # Whether red team agent is random or trained
-trained_red_team = True
+trained_red_team = False
 
 class GameState:
     def __init__(self):
@@ -130,6 +131,7 @@ class GameState:
         if draw_screen:
             pygame.display.flip()
         clock.tick()
+        print('Screen Update 1')
 
         # Get the current cat location and the readings there.
         cat_state = None
@@ -140,6 +142,7 @@ class GameState:
             if self.is_crashed(cat_readings):
                 self.cat_crashed = True
                 self.recover_cat_crash(cat_driving_direction)
+                print('Screen Update 3')
 
         # Get the current car location and the readings there.
         car_x, car_y = self.car_body.position
@@ -152,12 +155,13 @@ class GameState:
             self.car_crashed = True
             reward = -500
             self.recover_car_crash(car_driving_direction)
+            print('Screen Update 3')
         else:
             # Higher readings are better, so return the sum.
             reward = -5 + int(sum(car_readings) / 10)
 
         self.num_steps += 1
-        return reward, car_state, cat_state
+        return reward, -reward, car_state, cat_state
 
     def move_obstacles(self):
         if self.num_steps % 100 == 0:
@@ -190,6 +194,9 @@ class GameState:
             body.angle -= .2
         elif action == 1:  # Turn right.
             body.angle += .2
+        else:
+            # Don't modify angle
+            pass
         driving_direction = Vec2d(1, 0).rotated(body.angle)
         body.velocity = 100 * driving_direction
         return driving_direction
@@ -211,15 +218,17 @@ class GameState:
                 self.car_body.angle += .2  # Turn a little.
                 screen.fill(THECOLORS["yellow"])
                 draw(screen, self.space)
-                # Set velocity of other agents to 0 before retracting
-                cat_velocity = self.cat_body.velocity
-                self.cat_body.velocity = pymunk.Vec2d(0., 0.)
+                if use_red_team:
+                    # Set velocity of other agents to 0 before retracting
+                    cat_velocity = self.cat_body.velocity
+                    self.cat_body.velocity = pymunk.Vec2d(0., 0.)
                 self.space.step(1./10)
                 if draw_screen:
                     pygame.display.flip()
                 # Fill the screen black to avoid false detection by other agents
                 screen.fill(THECOLORS["black"])
-                self.cat_body.velocity = cat_velocity
+                if use_red_team:
+                    self.cat_body.velocity = cat_velocity
                 draw(screen, self.space)
                 clock.tick()
 
@@ -329,5 +338,7 @@ class GameState:
 
 if __name__ == "__main__":
     game_state = GameState()
+    i = 0
     while True:
+        i += 1
         game_state.frame_step((random.randint(0, 2)), (random.randint(0, 2)))

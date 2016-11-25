@@ -1,0 +1,28 @@
+virtualenv -p /usr/local/bin/python3 py3
+cd py3/
+source bin/activate
+pip3 install numpy keras h5py
+
+# Install Pygame 
+
+# Mac Instructions here(http://pygame.org/wiki/macintosh)
+
+- 1. Download and Install Quartz (https://www.xquartz.org/)
+
+- 2. Install Pygame dependencies
+brew install hg sdl sdl_image sdl_mixer sdl_ttf portmidi
+
+- 3. Install PyGame:
+pip3 install hg+http://bitbucket.org/pygame/pygame
+
+# Install Pymunk
+
+wget https://github.com/viblo/pymunk/archive/pymunk-4.0.0.tar.gz
+tar zxvf pymunk-4.0.0.tar.gz
+cd pymunk-pymukn-4.0.0/pymunk
+2to3 -w *.py
+cd .. python3 setup.py install
+
+export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.11.0-cp34-cp34m-linux_x86_64.whl
+
+

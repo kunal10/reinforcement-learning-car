@@ -34,7 +34,7 @@ def train_net(model, params):
     game_state = carmunk.GameState()
 
     # Get initial state by doing nothing and getting the state.
-    _, state = game_state.frame_step((2))
+    _, _, car_state, cat_state = game_state.frame_step((2))
 
     # Let's time it.
     start_time = timeit.default_timer()
@@ -50,14 +50,14 @@ def train_net(model, params):
             action = np.random.randint(0, 3)  # random
         else:
             # Get Q values for each action.
-            qval = model.predict(state, batch_size=1)
+            qval = model.predict(car_state, batch_size=1)
             action = (np.argmax(qval))  # best
 
         # Take action, observe new state and get our treat.
-        reward, new_state = game_state.frame_step(action)
+        car_reward, _, new_car_state, new_cat_state = game_state.frame_step(action)
 
         # Experience replay storage.
-        replay.append((state, action, reward, new_state))
+        replay.append((car_state, action, car_reward, new_car_state))
 
         # If we're done observing, start training.
         if t > observe:
@@ -81,14 +81,14 @@ def train_net(model, params):
             loss_log.append(history.losses)
 
         # Update the starting state with S'.
-        state = new_state
+        car_state = new_car_state
 
         # Decrement epsilon over time.
         if epsilon > 0.1 and t > observe:
             epsilon -= (1/train_frames)
 
         # We died, so update stuff.
-        if reward == -500:
+        if car_reward == -500:
             # Log the car's distance at this T.
             data_collect.append([t, car_distance])
 
