@@ -1,7 +1,6 @@
 import random
 import math
 import numpy as np
-import os
 
 import pygame
 from pygame.color import THECOLORS
@@ -10,26 +9,30 @@ import pymunk
 from pymunk.vec2d import Vec2d
 from pymunk.pygame_util import draw
 
+# Showing sensors and redrawing slows things down.
+show_sensors = False
+draw_screen = True
+use_obstacles = True
+# Whether red team agent should be added
+use_red_team = True
+# Whether red team agent is random or trained
+trained_red_team = True
+# Senor arm parameters
+spread = 10  # Default spread.
+distance = 20  # Gap before first sensor.
+
 # PyGame init
 width = 1000
 height = 700
+frame_step = 0.06
 pygame.init()
 screen = pygame.display.set_mode((width, height))
+if not draw_screen:
+    pygame.display.iconify()
 clock = pygame.time.Clock()
-
 # Turn off alpha since we don't use it.
-# screen.set_alpha(None)
+screen.set_alpha(None)
 
-# Showing sensors and redrawing slows things down.
-show_sensors = False
-draw_screen = False
-
-use_obstacles = False
-
-# Whether red team agent should be added
-use_red_team = False
-# Whether red team agent is random or trained
-trained_red_team = False
 
 class GameState:
     def __init__(self):
@@ -69,7 +72,7 @@ class GameState:
             s.friction = 1.
             s.group = 1
             s.collision_type = 1
-            s.color = THECOLORS['red']
+            s.color = THECOLORS['purple']
         self.space.add(static)
 
         # Create some obstacles, semi-randomly.
@@ -127,11 +130,12 @@ class GameState:
         # Update the screen and stuff.
         screen.fill(THECOLORS["black"])
         draw(screen, self.space)
-        self.space.step(1./10)
+        self.space.step(frame_step)
         if draw_screen:
             pygame.display.flip()
+            # Required after update to MacOS Sierra
+            pygame.event.clear()
         clock.tick()
-        print('Screen Update 1')
 
         # Get the current cat location and the readings there.
         cat_state = None
@@ -142,7 +146,6 @@ class GameState:
             if self.is_crashed(cat_readings):
                 self.cat_crashed = True
                 self.recover_cat_crash(cat_driving_direction)
-                print('Screen Update 3')
 
         # Get the current car location and the readings there.
         car_x, car_y = self.car_body.position
@@ -155,7 +158,6 @@ class GameState:
             self.car_crashed = True
             reward = -500
             self.recover_car_crash(car_driving_direction)
-            print('Screen Update 3')
         else:
             # Higher readings are better, so return the sum.
             reward = -5 + int(sum(car_readings) / 10)
@@ -222,15 +224,18 @@ class GameState:
                     # Set velocity of other agents to 0 before retracting
                     cat_velocity = self.cat_body.velocity
                     self.cat_body.velocity = pymunk.Vec2d(0., 0.)
-                self.space.step(1./10)
+                self.space.step(frame_step)
                 if draw_screen:
                     pygame.display.flip()
-                # Fill the screen black to avoid false detection by other agents
-                screen.fill(THECOLORS["black"])
-                if use_red_team:
-                    self.cat_body.velocity = cat_velocity
-                draw(screen, self.space)
+                    # Required after update to MacOS Sierra
+                    pygame.event.clear()
                 clock.tick()
+
+                if use_red_team:
+                    # Fill the screen black to avoid false detection by other agents
+                    screen.fill(THECOLORS["black"])
+                    self.cat_body.velocity = cat_velocity
+                    # draw(screen, self.space)
 
     def recover_cat_crash(self, cat_driving_direction):
         """
@@ -242,19 +247,22 @@ class GameState:
             self.cat_crashed = False
             for i in range(10):
                 self.cat_body.angle += .2  # Turn a little.
-                screen.fill(THECOLORS["orange"])  # Red is scary!
+                screen.fill(THECOLORS["orange"])
                 draw(screen, self.space)
                 # Set velocity of other agents to 0 before retracting
                 car_velocity = self.car_body.velocity
                 self.car_body.velocity = pymunk.Vec2d(0., 0.)
-                self.space.step(1./10)
+                self.space.step(frame_step)
                 if draw_screen:
                     pygame.display.flip()
-                # Fill the screen black to avoid false detection by other agents
-                screen.fill(THECOLORS["black"])  # Red is scary!
-                self.car_body.velocity = car_velocity
-                draw(screen, self.space)
+                    # Required after update to MacOS Sierra
+                    pygame.event.clear()
                 clock.tick()
+                # Fill the screen black to avoid false detection by other agents
+                screen.fill(THECOLORS["black"])
+                self.car_body.velocity = car_velocity
+                # draw(screen, self.space)
+
 
     def get_sonar_readings(self, x, y, angle):
         readings = []
@@ -275,8 +283,10 @@ class GameState:
         readings.append(self.get_arm_distance(arm_middle, x, y, angle, 0))
         readings.append(self.get_arm_distance(arm_right, x, y, angle, -0.75))
 
-        if show_sensors:
+        if draw_screen and show_sensors:
             pygame.display.update()
+            # Required after update to MacOS Sierra
+            pygame.event.clear()
 
         return readings
 
@@ -310,8 +320,6 @@ class GameState:
         return i
 
     def make_sonar_arm(self, x, y):
-        spread = 10  # Default spread.
-        distance = 20  # Gap before first sensor.
         arm_points = []
         # Make an arm. We build it flat because we'll rotate it about the
         # center later.

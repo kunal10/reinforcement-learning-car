@@ -7,4 +7,6 @@ __pycache__
 .idea
 .ipynb_checkpoints/
 
+debug*.py
+
 logs/
