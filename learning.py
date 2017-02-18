@@ -54,14 +54,13 @@ def train_net(model, params):
             action = (np.argmax(qval))  # best
 
         # Take action, observe new state and get our treat.
-        car_reward, _, new_car_state, new_cat_state = game_state.frame_step(action)
+        new_car_state, car_reward, new_cat_state, cat_reward = game_state.frame_step(action)
 
         # Experience replay storage.
         replay.append((car_state, action, car_reward, new_car_state))
 
         # If we're done observing, start training.
         if t > observe:
-
             # If we've stored enough in our buffer, pop the oldest.
             if len(replay) > buffer:
                 replay.pop(0)

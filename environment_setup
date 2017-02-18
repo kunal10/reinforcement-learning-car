@@ -26,3 +26,15 @@ cd .. python3 setup.py install
 export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.11.0-cp34-cp34m-linux_x86_64.whl
 
 
+# Maveric Install
+
+# SDL
+https://wiki.libsdl.org/Installation
+
+# Pygame
+http://www.pygame.org/wiki/CompileRedHat
+
+Things to do:
+- Number of arms and offset
+- Wall reading and Agent reading for red team
+- Agent direction for red team

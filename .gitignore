@@ -9,4 +9,10 @@ __pycache__
 
 debug*.py
 
+environment_setup
+
+stats/
 logs/
+models/
+backup/
+tmp/
